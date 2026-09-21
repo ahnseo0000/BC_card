@@ -19,6 +19,63 @@ css = re.search(r"<style>(.*?)</style>", R.HTML, re.S).group(1)
 surv = surv_transform(R.HTML[R.HTML.index("<h2>한눈에"):R.HTML.index("<footer>")])   # 표시용 다듬기(site_surv.py) — 숫자는 그대로
 nat = json.loads(data)["national"]
 
+
+def forward_html():
+    """전향 검증 카드(모형 근거 탭 끝). output/13_forward_*.csv가 있으면 새로 만들어 site_parts/forward.html에 보관하고, 없으면 보관본을 쓴다."""
+    import pandas as pd
+    keep = Path("site_parts/forward.html")
+    try:
+        sm = pd.read_csv("output/13_forward_summary.csv", encoding="utf-8-sig").set_index("모형")
+        dc = pd.read_csv("output/13_forward_decile.csv", encoding="utf-8-sig")
+        inc = pd.read_csv("output/13_forward_increment.csv", encoding="utf-8-sig")
+    except FileNotFoundError:
+        return keep.read_text(encoding="utf-8") if keep.exists() else ""
+    top = sm.loc["M3L + 자기·이웃 이력"]
+    n = int(dc["점포"].sum())
+    ev = int(dc["폐업"].sum())
+    base = ev / n * 100
+    mx = float(dc["실제_폐업률_pct"].max())
+    cap = lambda k: dc.sort_values("십분위(10=위험 최고)", ascending=False).head(k)["폐업"].sum() / ev * 100
+    def lab(i):
+        return f"위험 {i}분위" + (" (최저)" if i == 1 else (" (최고)" if i == 10 else ""))
+
+    bars = "".join(
+        f'<div style="display:flex;align-items:center;gap:10px;margin:6px 0"><span style="width:118px;font-size:13.5px">{lab(int(r["십분위(10=위험 최고)"]))}</span>'
+        f'<span style="flex:1;background:var(--line);border-radius:4px;height:14px;position:relative"><i style="position:absolute;left:0;top:0;bottom:0;width:{r["실제_폐업률_pct"] / mx * 100:.1f}%;border-radius:4px;background:{"var(--hi,#d64541)" if r["평균 대비"] >= 1 else "var(--lo,#2d6ebe)"}"></i></span>'
+        f'<span style="width:150px;text-align:right;font-size:13.5px;white-space:nowrap"><b>{r["실제_폐업률_pct"]:.2f}%</b> <span class="hint">평균 ×{r["평균 대비"]:.2f}</span></span></div>'
+        for _, r in dc.iterrows())
+
+    def cidx(v):
+        return "-" if pd.isna(v) else f"{v:.3f}"
+
+    rows = "".join(
+        f'<tr><td>{name}</td><td class="num">{cidx(r["점포 C-index"])}</td><td class="num">{r["Spearman(전체)"]:.2f} <span class="hint">{r["95% CI(전체)"]}</span></td>'
+        f'<td class="num">{r["Spearman(시군구 내)"]:.2f} <span class="hint">{r["95% CI(시군구 내)"]}</span></td></tr>' for name, r in sm.iterrows())
+    pers = inc[(inc["블록"] == "지속성 기준 대비") & (inc["기준"] == "전체")].iloc[0]
+    hist = inc[(inc["블록"] == "직전 1년 폐업률(그룹)") & (inc["기준"] == "전체")].iloc[0]
+    nbr = inc[(inc["블록"] == "자기·이웃 시군구 폐업 이력") & (inc["기준"] == "전체")].iloc[0]
+    bcx = inc[(inc["블록"] == "BC 성별·연령") & (inc["기준"] == "전체")].iloc[0]
+    html = (
+        '<div class="band" id="forward"><p class="eyebrow">FORWARD TEST</p><h2>시간이 지나도 맞았나요? — 7~9월 실제 폐업으로 확인</h2>'
+        f'<p class="sec-sub">1~6월 정보로 학습한 모형이, 학습에 쓰지 않은 지역·업종 조합의 점포 {n:,}개(6월 30일 영업 중)를 9월 16일까지 78일 동안 추적한 실제 결과와 얼마나 맞는지 봤어요. '
+        'BC카드 소비는 1~6월 집계라 6월 30일에 이미 알려진 정보라서 미래 정보가 섞이지 않아요.</p>'
+        f'<div class="kp"><div><b>{base:.2f}%</b><span>78일 실제 폐업률({ev:,}건)</span></div><div><b>{top["점포 C-index"]:.3f}</b><span>점포 단위 판별력(C-index, 0.5 = 무작위)</span></div>'
+        f'<div><b>{dc.iloc[-1]["평균 대비"]:.1f}배 vs {dc.iloc[0]["평균 대비"]:.2f}배</b><span>위험 최상위 10% vs 최하위 10% 점포의 실제 폐업률(평균 대비)</span></div>'
+        f'<div><b>{cap(2):.0f}%</b><span>위험 상위 20% 점포가 차지한 실제 폐업 비중(상위 30%는 {cap(3):.0f}%)</span></div></div>'
+        f'<div class="card"><h3 style="margin-top:0">예측 위험 순서대로 나눠 본 실제 폐업률</h3><div>{bars}</div>'
+        f'<p class="cap">점포를 최종 모형의 위험 점수 순으로 10등분한 뒤 각 구간의 실제 78일 폐업률이에요. 위험 점수가 높을수록 실제로 더 많이 폐업하는 흐름이 뚜렷해요(관찰된 연관이며 원인은 아니에요).</p></div>'
+        '<div class="card" style="margin-top:14px"><h3 style="margin-top:0">모형별 · 지역×업종 조합 순위 일치도(순위상관, 95% 신뢰구간)</h3><div class="scroll"><table class="tbl"><thead><tr><th>모형</th><th class="num">점포 판별력</th><th class="num">전체 조합</th><th class="num">같은 시군구 안</th></tr></thead>'
+        f'<tbody>{rows}</tbody></table></div>'
+        f'<p class="cap">최종 모형은 단순히 1~6월 실제 폐업률을 그대로 쓰는 방법보다 더 잘 맞았어요(순위상관 차이 {pers["ΔSpearman"]:+.3f}, {pers["95% CI"]}로 0을 제외). '
+        f'직전 1년 폐업률 요인은 확실히 도움이 됐어요({hist["ΔSpearman"]:+.3f}, {hist["95% CI"]}). 반면 이웃 지역 폐업 흐름({nbr["ΔSpearman"]:+.3f}, {nbr["95% CI"]})과 BC카드 성별·연령({bcx["ΔSpearman"]:+.3f}, {bcx["95% CI"]})은 이 검증에서는 신뢰구간이 0을 포함해 추가 효과를 확인하지 못했어요. '
+        '관측 기간이 78일로 짧아 조합별 폐업 수가 적기 때문에, 학습 기간 안의 검증(순위상관 0.59)과 값을 직접 비교할 수는 없어요.</p></div></div>')
+    keep.parent.mkdir(exist_ok=True)
+    keep.write_text(html, encoding="utf-8")
+    return html
+
+
+fwd = forward_html()
+
 EXTRA_CSS = r"""
 /* ===== 디자인 토큰 =====
    UI 액센트(--accent 계열, 딥그린): 탭·선택 칩·링크·버튼·차트의 강조/유의 막대.
@@ -385,7 +442,7 @@ __EXTRA__</style></head><body>
 <div class="card"><div id="scat"></div><p class="cap">점 하나 = 시군구×업종 조합(점포 100개 이상), 굵은 선 = 소비 10분위별 실제 폐업률. 소비 하위 구간의 폐업률이 가장 낮고 중·상위에서는 비슷한 수준으로 이어져요. 소비가 높다고 폐업이 반드시 적은 것은 아니에요(관찰된 관계일 뿐 원인은 아니에요). 업종 안 소비 순위와 폐업률 순위의 일치도(순위상관)는 전체 __RHO_ALL__, 같은 시군구 안에서는 __RHO_IN__(관계가 보이지 않아요)이에요.</p></div></div>
 </section>
 
-<section class="tab" id="t-surv">__SURV__</section>
+<section class="tab" id="t-surv">__SURV____FWD__</section>
 </main>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <noscript><p style="padding:16px">이 지도는 JavaScript가 필요해요. 브라우저에서 JavaScript를 켜 주세요.</p></noscript>
@@ -944,7 +1001,7 @@ else if(qP){$('#ask').value=qP;ask(bi>=0);}else if(bi>=0){update();renderHome();
 fitMap();window.addEventListener('load',fitMap);
 </script></body></html>"""
 
-html_out = (TEMPLATE.replace("__CSS__", css).replace("__EXTRA__", EXTRA_CSS).replace("__DATA__", data).replace("__SURV__", surv).replace("__LEAFLET_CSS__", Path("vendor/leaflet.css").read_text(encoding="utf-8")).replace("__LEAFLET_JS__", Path("vendor/leaflet.js").read_text(encoding="utf-8"))
+html_out = (TEMPLATE.replace("__CSS__", css).replace("__EXTRA__", EXTRA_CSS).replace("__DATA__", data).replace("__SURV__", surv).replace("__FWD__", fwd).replace("__LEAFLET_CSS__", Path("vendor/leaflet.css").read_text(encoding="utf-8")).replace("__LEAFLET_JS__", Path("vendor/leaflet.js").read_text(encoding="utf-8"))
             .replace("__TIP_MIN__", TIP_MIN).replace("__N__", f"{nat['n']:,}").replace("__EV__", f"{nat['events']:,}").replace("__RATE__", f"{nat['rate'] * 100:.2f}")
             .replace("__RHO_ALL__", f"{R.rho_all:+.2f}").replace("__RHO_IN__", f"{R.rho_in:+.2f}"))
 for d in ("site", "docs"):             # site/는 로컬 확인용, docs/는 GitHub Pages(main 브랜치 /docs)용 — 내용 동일

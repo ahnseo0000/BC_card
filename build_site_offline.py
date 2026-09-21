@@ -22,7 +22,7 @@ surv = surv_transform((P / "surv.html").read_text(encoding="utf-8"))   # site_pa
 meta = json.loads((P / "meta.json").read_text(encoding="utf-8"))
 nat = json.loads(data)["national"]
 
-html_out = (TEMPLATE.replace("__CSS__", css).replace("__EXTRA__", EXTRA_CSS).replace("__DATA__", data).replace("__SURV__", surv).replace("__LEAFLET_CSS__", Path("vendor/leaflet.css").read_text(encoding="utf-8")).replace("__LEAFLET_JS__", Path("vendor/leaflet.js").read_text(encoding="utf-8"))
+html_out = (TEMPLATE.replace("__CSS__", css).replace("__EXTRA__", EXTRA_CSS).replace("__DATA__", data).replace("__SURV__", surv).replace("__FWD__", (P / "forward.html").read_text(encoding="utf-8") if (P / "forward.html").exists() else "").replace("__LEAFLET_CSS__", Path("vendor/leaflet.css").read_text(encoding="utf-8")).replace("__LEAFLET_JS__", Path("vendor/leaflet.js").read_text(encoding="utf-8"))
             .replace("__TIP_MIN__", TIP_MIN).replace("__N__", f"{nat['n']:,}").replace("__EV__", f"{nat['events']:,}").replace("__RATE__", f"{nat['rate'] * 100:.2f}")
             .replace("__RHO_ALL__", meta["rho_all"]).replace("__RHO_IN__", meta["rho_in"]))
 Path("docs").mkdir(exist_ok=True)
