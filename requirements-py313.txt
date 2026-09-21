@@ -1,0 +1,12 @@
+# 최종 모형·설명·웹사이트 파이프라인을 만든 환경 (Windows, Python 3.13.1)
+# RSF(scikit-survival)는 이 환경에서 설치되지 않아 requirements.txt(Python 3.9)의 별도 환경에서 실행한다.
+pandas==2.2.3
+numpy==2.5.1
+scipy==1.17.1
+scikit-learn==1.6.1
+lifelines==0.30.3
+statsmodels==0.14.6
+matplotlib==3.10.0
+pyproj==3.8.0
+joblib==1.5.3
+pyarrow==25.0.1
