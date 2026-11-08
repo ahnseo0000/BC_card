@@ -1,135 +1,97 @@
-# 상권 생존 지도 — 설명 가능한 상권 생존 분석
+# 상권 생존 지도
 
-BC카드 소비데이터 공모전 출품작. **소비는 있는데 왜 못 버티는가**를 점포 단위 폐업 기록(생존분석)과 BC카드 소비 구성으로 설명하고, 결과를 지도 웹사이트로 제공한다.
+**소비는 있는데 왜 못 버티는가** — BC카드 소비데이터 공모전 출품작.
 
-- **웹사이트**: https://ahnseo0000.github.io/BC_card/ (이 저장소의 `docs/index.html`, GitHub Pages)
-- **분석 기록(방법·검증·정정 이력 전부)**: [CHANGELOG.md](CHANGELOG.md) — ⑰~㉚이 이 README가 다루는 최근 작업
-- **데이터 소스·업종 매핑 정리**: [DATA_MAPPING.md](DATA_MAPPING.md)
-- **프로젝트 계획(확정 사항·진행 현황)**: [BC카드_공모전_프로젝트_계획.md](BC카드_공모전_프로젝트_계획.md)
+점포 단위 폐업 기록과 BC카드 소비 데이터를 결합해, 어떤 지역·업종이 왜 폐업 위험이 높은지 설명하고 그 결과를 웹사이트로 제공한다.
 
-> 이 프로젝트의 모든 결과는 **통계적 연관**이며 인과나 정책 효과가 아니다.
-
----
-
-## 한눈에
-
-| 항목 | 내용 |
-|---|---|
-| 분석 대상 | 2026-01-01에 영업 중이던 점포 635,536개(한식계열·일식회집·중국음식·서양음식·스낵·제과점·편의점 7개 업종)를 180일 추적, 폐업 25,329건(3.99%) |
-| 결과 변수 | LOCALDATA 인허가 4종의 폐업일자 (점포 단위) |
-| 설명 변수 | 점포(영업연수·프랜차이즈·입지·규모 등), 지역 폐업 이력(시군구·이웃 시군구), BC카드 시군구×업종 성별·연령 구성·소비 규모(2026-01~06) |
-| 최종 생존 모형 | Cox 비례위험 모형 **M3L** — 선형이라 요인별 기여를 정확히 분해할 수 있다 |
-| 검증 | 그룹(시군구×업종) 5-fold, 시군구 5-fold, 전향(시간 밖) 검증(6/30 영업 점포를 9/16까지 78일 추적) |
-| 부가 분석 | 상권 유형화(5유형), 단기 소비 추이 예측, 연령 구성 변화(고객 분석) |
-
-### 핵심 결과
-
-1. **지역이 업종보다 크다** — 그룹 간 폐업률 차이를 더미변수로 설명한 정도(조정 R²)가 시군구만 0.44, 업종만 0.12로 약 4배 차이(CHANGELOG ⑳).
-2. **점포 단위 판별은 영업연수·프랜차이즈·점포 특성이, 지역 간 순위는 자기·이웃 지역의 최근 폐업 흐름이 만든다** — 블록을 하나씩 빼고 재검증한 결과(㉓).
-3. **BC카드 성별·연령 구성은 어떤 유형의 지역인지 알려 주는 맥락 정보다** — 같은 시군구 안에서는 폐업 위험을 가르지 못했다(⑱). 소비 규모·객단가·성장률 등 추가 지표도 검증했지만 예측 순위를 더 개선하지 못했다(⑲㉑).
-4. **잔차에 남은 공간 구조는 이웃 시군구의 최근 폐업 흐름 하나로 거의 설명된다** — GNN 없이 Moran's I가 0.157→0.023으로 사라졌다(㉑㉒).
-5. **전향 검증으로 시간이 지나도 맞는지 확인했다** — 6월 30일 영업 점포를 9월 16일까지 78일 추적, 점포 단위 C-index 0.627, 위험 최상위 10% 점포의 실제 폐업률이 최하위 10%의 약 4.3배(㉘).
-6. **단기 소비 추이는 점포·고객 구성 정보로 예측이 개선된다** — 지속성(4월 값 그대로) 대비 점포·고객 구성을 더한 모형이 MAPE를 8.8%→6.8%로 낮췄다(㉙). 다만 BC 집계 단위는 표본이 커서 지속성만으로도 이미 매우 정확하다.
-7. **고객 연령 구성의 변화(상반기→하반기)는 위험과 약하게만 연관된다**(순위상관 −0.12, ㉚) — 강한 근거는 아니다.
-
-자세한 수치·신뢰구간·방법·한계는 사이트 **'모형 근거' 탭**과 CHANGELOG ⑰~㉚에 전부 있다.
+- **웹사이트**: https://ahnseo0000.github.io/BC_card/
+- **데이터 소스·업종 매핑**: [DATA_MAPPING.md](DATA_MAPPING.md)
+- **프로젝트 기획**: [BC카드_공모전_프로젝트_계획.md](BC카드_공모전_프로젝트_계획.md)
 
 ---
 
-## 저장소 구성
+## 문제의식
 
-| 구분 | 파일 | 역할 |
+BC카드의 기존 서비스(상권지수, Biz Credit)는 상권을 등급으로 스냅샷하거나 개별 가맹점의 휴폐업을 예측한다. 이 프로젝트는 한 단계 더 들어가서, **지역×업종 단위로 왜 폐업 위험이 갈리는지를 요인별로 분해**하는 데 집중했다. 결과는 전부 통계적 연관이며, 인과관계나 정책 효과를 주장하지 않는다.
+
+## 데이터
+
+| 데이터 | 성격 | 쓰임 |
 |---|---|---|
-| 전처리 | `preprocess_bc.py`, `preprocess_localdata.py`, `join_datasets.py`, `build_region_master.py`, `franchise_brands.csv` | ABP·LOCALDATA 정제, 업종 매핑, 프랜차이즈 목록(수작업), 조인 → `data/final_joined.csv` |
-| 탐색 | `eda.py`, `eda_candidates.py`, `km_screening.py` | 변수 후보 스크리닝, Kaplan-Meier |
-| 모형(팀원) | `cox_rsf.py`, `cohort_common.py`, `rsf_eval.py`, `shap_rsf_approx.py` | 코호트 생성·Cox/RSF 평가·RSF 근사 SHAP. 다른 스크립트가 `cox_rsf.py`의 코호트 생성부를 그대로 불러 쓴다 |
-| 생존모형 설명·검증 | `explain_common.py`, `explain_cox.py`, `explain_final.py`, `confound_check.py`, `bc_scale_check.py`, `risk_decomp.py`, `moran_residuals.py`, `forward_validation.py`, `group_types.py` | Cox 분해, 교란 점검, 5-fold 비교, 위험 원천 분해, 공간 자기상관, 전향 검증, 상권 유형화 |
-| 부가 분석 | `demand_forecast.py`, `customer_analysis.py` | 단기 소비 추이 예측(점포·고객 구성 반영), 연령 구성 변화 분석 |
-| 사이트 | `prep_site_data.py`, `build_report.py`, `build_site.py`, `site_surv.py`, `build_site_offline.py`, `site_parts/`, `vendor/` | 사이트용 데이터, 리포트·사이트 HTML 생성(`docs/`가 배포본) |
-| 기타 | `spatial_features.py`, `sojin_density.py` | 소진공 상가 기반 경쟁밀도(선택, 원자료 필요, 최종 모형에는 미사용) |
+| BC카드 소비데이터 (대회 제공) | 시군구×업종×성별×연령×월 집계, 2026년 1~6월 | 지역·업종별 소비 구성·규모 |
+| 지방행정 인허가데이터 (LOCALDATA, data.go.kr) | 개별 점포의 인허가·폐업일자 | 생존분석의 관측 단위(결과 변수) |
+| 소상공인시장진흥공단 상가정보 | 전국 상가 스냅샷 | 경쟁밀도 후보로 검토했으나 시점 문제로 최종 모형에는 미사용 |
 
-### 산출물 번호 체계 (`output/`, git에는 올리지 않음)
+분석 대상은 2026년 1월 1일 기준 영업 중이던 점포 635,536개(한식계열·일식회집·중국음식·서양음식·스낵·제과점·편의점 7개 업종)이며, 180일간 추적해 25,329건의 폐업을 관측했다.
 
-| 접두 | 스크립트 | 내용 |
-|---|---|---|
-| `4_`, `4e_` | `km_screening.py` | Kaplan-Meier |
-| `5_`, `5b_` | `sojin_density.py`, `spatial_features.py` | 경쟁밀도(참고용) |
-| `6_` | `explain_cox.py` | 초기 Cox 분해(참고용, 최종은 `11_`) |
-| `7_` | `confound_check.py` | BC 연령 구성 교란 점검 |
-| `8_` | `bc_scale_check.py` | 그룹·시군구 5-fold 비교, 그룹 특성, 미학습 예측(`_cache/oof_group.npz`) |
-| `9_` | `risk_decomp.py` | 위험 원천 분해, 소비-폐업 관계 |
-| `10_` | `moran_residuals.py` | 잔차 공간 자기상관(Moran's I) |
-| `11_` | `explain_final.py` | **최종 모형(M3L) 요인 분해 + 블록 제거 예측 중요도** |
-| `12_` | `group_types.py` | 상권 유형화(5유형) |
-| `13_` | `forward_validation.py` | 전향(시간 밖) 검증 |
-| `14_` | `demand_forecast.py` | 단기 소비 추이 예측 |
-| `15_` | `customer_analysis.py` | 연령 구성 변화(고객 분석) |
-| `site_data.json` | `prep_site_data.py` | 사이트용 통합 데이터(위 산출물 전부를 묶음) |
+## 분석 과정
 
----
+**1. 데이터 정제와 결합** — LOCALDATA 4종(일반음식점·제과점·휴게음식점·대규모점포)을 BC카드 업종 분류에 맞춰 정제하고 시군구 단위로 결합했다. 프랜차이즈 여부는 브랜드 키워드 목록을 직접 구축해 판별했고, 행정구역 개편(신설 구, 통합시)과 인천 구역 변경을 별도 대응표로 반영했다.
+
+**2. 생존분석 모델링** — 결과 변수는 폐업 여부, 분석 단위는 점포다. Cox 비례위험 모형을 메인으로 썼는데, 선형 모형이라 각 요인이 위험에 기여하는 정도를 정확한 수식으로 분해할 수 있기 때문이다(랜덤서바이벌포레스트는 비선형 성능 비교용으로 병행). 최종 모형은 점포 특성(영업연수·프랜차이즈·규모 등), 지역의 최근 폐업 흐름(자기 시군구 + 이웃 시군구), BC카드 성별·연령 구성을 포함한다.
+
+**3. 검증** — 같은 데이터로 찾은 패턴은 우연일 수 있어 여러 각도로 검증했다.
+- 미학습 그룹(시군구×업종 조합)과 미학습 시군구에 대한 5겹 교차검증
+- 모형이 상권 유형(신도시·구도심 등)을 BC카드 연령 구성으로 대리 포착하고 있는 건 아닌지 확인하는 교란 점검
+- 잔차의 공간 자기상관(Moran's I) 확인 — 이웃 시군구의 최근 폐업 흐름을 변수로 추가하자 공간적으로 남아 있던 패턴이 거의 사라졌다(그래프 신경망 없이)
+- **전향 검증**: 1~6월 데이터로 학습한 모형이 이후 실제로 일어난 폐업(6월 30일 영업 중이던 점포를 9월 16일까지 78일 추적)을 얼마나 맞히는지 확인
+
+**4. 요인 분해와 상권 유형화** — Cox 모형의 선형예측값을 요인별로 정확히 쪼개 "이 상권이 평균보다 위험한 이유"를 수치로 제시한다. 블록을 하나씩 제거하며 재검증해 SHAP류 분해가 보여주는 중요도가 실제 예측력과 일치하는지도 교차 확인했다. 이 요인 프로필을 바탕으로 전체 조합을 5개 상권 유형으로 묶었다.
+
+**5. 추가 분석** — 단기 소비 추이 예측(점포·고객 구성 정보를 더했을 때 단순 지속성 예측보다 나은지 검증), 고객 연령 구성의 상반기 대비 변화 분석을 더했다.
+
+**6. 웹사이트 제작** — 분석 결과를 지도 기반 웹사이트로 만들었다. 서버 없이 정적 페이지로 동작하며, 검색과 설명 문구는 LLM이 아니라 규칙 기반으로 생성해 숫자가 분석 결과와 항상 일치하도록 했다.
+
+## 핵심 결과
+
+- **지역이 업종보다 폐업률 차이를 훨씬 크게 가른다.** 그룹 간 폐업률 차이를 설명하는 정도가 시군구 기준으로는 업종 기준의 약 4배였다.
+- **점포 단위 위험은 영업연수·프랜차이즈 여부·점포 규모가 가장 크게 설명하고, 지역 간 위험 차이는 그 지역과 이웃 지역의 최근 폐업 흐름이 가장 크게 설명한다.**
+- **BC카드 성별·연령 구성은 "어떤 유형의 지역인가"를 알려주는 맥락 정보에 가깝다.** 같은 시군구 안에서는 연령 구성이 폐업 위험을 가르지 못했고, 소비 규모·객단가·소비 성장률 같은 추가 지표도 예측력을 뚜렷이 개선하지 못했다.
+- **모형은 시간이 지나도 유효했다.** 1~6월로 학습한 모형이 이후 78일간의 실제 폐업을 예측한 결과, 위험 상위 10% 점포의 실제 폐업률이 하위 10%의 약 4배였다.
+- **단기 소비 추이는 점포·고객 구성 정보를 더했을 때 예측 오차가 줄었다**(지속성 예측 대비 오차 약 23% 감소). 다만 집계 단위가 크다 보니 단순히 "직전 달 값을 유지한다"는 예측도 이미 상당히 정확했다.
+- **고객 연령 구성의 변화(상반기 대비 하반기)는 폐업 위험과 약하게만 연관됐다.** 뚜렷한 근거로 보기는 어렵다.
+
+## 웹사이트
+
+- **지도 탐색**: 시군구를 버블로 표시하고 위험도·실제 폐업률·상권 유형별로 색을 바꿔 볼 수 있다. 업종 필터, 자연어에 가까운 검색("동탄 서양음식", "한식 위험한 곳"), 지역을 선택하면 나오는 요인별 분해, BC카드 소비 구성, 상권 유형 설명, 그리고 개업 연수·프랜차이즈 여부를 입력하면 상대적 위험도를 즉시 계산해주는 진단 기능이 있다.
+- **상권 분석**: 시군구 프로필, 두 지역 비교, 위험·안전 순위, 상권 유형별 통계.
+- **모형 근거**: 어떤 요인이 왜 중요한지, 검증 결과와 전향 검증, 데이터의 한계를 정리했다.
+
+## 기술 스택
+
+Python(pandas, lifelines, scikit-survival, scikit-learn, scipy), Cox 비례위험모형 / 랜덤서바이벌포레스트, 공간분석(Moran's I, pyproj), 정적 웹(순수 HTML/CSS/JS + Leaflet), GitHub Pages 배포.
 
 ## 재현 방법
 
-### 1. 환경
-- 주 파이프라인: Python 3.13 + [`requirements-py313.txt`](requirements-py313.txt)
-- RSF(`cox_rsf.py`의 RSF 절, `rsf_eval.py`): scikit-survival이 필요해 [`requirements.txt`](requirements.txt)(Python 3.9)의 별도 환경에서 실행. 그 외 스크립트는 scikit-survival 없이 돈다.
-- 메모리: `data/final_joined.csv`(약 1.3GB)를 다루므로 여유가 필요하다(열을 지정하지 않고 통째로 읽으면 메모리 오류가 날 수 있다).
-- Windows에서 사용자 폴더 경로에 한글이 있으면 joblib 병렬 실행이 실패할 수 있다 → `JOBLIB_TEMP_FOLDER=C:\joblib_tmp` (RSF 실행 시).
-- 지도 좌표 변환(`prep_site_data.py`)은 `pyproj`가 필요하다(EPSG:5174 → WGS84).
+원자료(BC카드 데이터, LOCALDATA 4종)는 용량 문제로 저장소에 포함하지 않았다. `data/`에 원자료를 두고 아래 순서로 실행한다.
 
-### 2. 원자료 (저장소에 없음 — `data/`에 직접 둔다)
-`ABP_CONTEST_DATA.csv`(대회 제공), 식품_일반음식점.csv, 식품_제과점영업.csv, 식품_휴게음식점.csv, 생활_대규모점포.csv (LOCALDATA, data.go.kr). 소진공 상가 자료는 선택(경쟁밀도 스크립트용, 최종 모형에는 쓰지 않음).
-
-### 3. 실행 순서
 ```
-python preprocess_bc.py           # data/bc_clean.csv
-python preprocess_localdata.py    # data/localdata_wide.csv, localdata_clean.csv  (franchise_brands.csv 사용)
-python join_datasets.py           # data/final_joined.csv, bc_group_month.csv
+python preprocess_bc.py
+python preprocess_localdata.py
+python join_datasets.py
 
-python bc_scale_check.py          # output/8_*  (그룹·시군구 5-fold 비교, 그룹 특성, 미학습 예측 저장) — 첫 실행은 수십 분, 이후 캐시(output/_cache)로 빠름
-python explain_final.py           # output/11_* (M3L 요인 분해, 블록 제거 예측 중요도)
-python risk_decomp.py             # output/9_*  (위험 원천 분해, 소비-폐업 분석)
-python moran_residuals.py         # output/10_* (잔차 공간 자기상관)
-python group_types.py             # output/12_* (상권 유형)
-python forward_validation.py      # output/13_* (전향 검증)
-python demand_forecast.py         # output/14_* (단기 소비 추이 예측)
-python customer_analysis.py       # output/15_* (고객 연령 구성 변화)
+python bc_scale_check.py        # 교차검증, 그룹 특성 — 다른 스크립트가 이 결과를 재사용하므로 가장 먼저 실행
+python explain_final.py         # 최종 모형 요인 분해
+python risk_decomp.py
+python moran_residuals.py
+python group_types.py
+python forward_validation.py
+python demand_forecast.py
+python customer_analysis.py
 
-python prep_site_data.py          # output/site_data.json  (+ site_parts/site_data.json 사본 갱신)
-python build_site.py              # docs/index.html, site/index.html, report/index.html
+python prep_site_data.py
+python build_site.py            # docs/index.html 생성 — GitHub Pages가 서비스하는 파일
 ```
-- 각 스크립트는 `cox_rsf.py`의 코호트 생성부를 그대로 실행해 같은 코호트(635,536점포)를 만든다. 크기가 다르면 명확한 오류로 멈춘다.
-- `bc_scale_check.py`는 다른 여러 스크립트(`risk_decomp.py`, `moran_residuals.py` 등)가 쓰는 `output/8_group_features.csv`와 미학습 예측 캐시를 만들므로 **가장 먼저 돌려야 한다.**
-- `demand_forecast.py`·`customer_analysis.py`는 `output/8_group_features.csv`와 `output/11_final_group_blocks.csv`를 읽으므로 `bc_scale_check.py`·`explain_final.py` 이후에 돌린다.
-- `output/`이 없는 환경에서는 `python build_site_offline.py`가 `site_parts/`의 보관본으로 `docs/index.html`을 다시 만든다(수치는 마지막으로 `prep_site_data.py`를 돌렸을 때 값).
-- 선택 스크립트: `confound_check.py`(소진공 경쟁밀도 파일 필요), `explain_cox.py`(초기 SHAP 분해, 최종은 `explain_final.py`).
-- 결과 CSV와 `data/`, `output/`은 용량 때문에 git에 올리지 않는다(`.gitignore`).
 
-### 4. 배포
-`docs/index.html`이 GitHub Pages(Branch `main`, 폴더 `/docs`)로 서비스된다. 배경 지도 타일은 외부(Esri → OpenStreetMap 순 대체)에서 불러오므로 화면을 보려면 인터넷이 필요하다. 지도 라이브러리(Leaflet)는 `vendor/`를 HTML에 넣어 외부 CDN에 의존하지 않는다.
+Python 3.13 환경은 `requirements-py313.txt`를, 랜덤서바이벌포레스트(scikit-survival)는 별도의 Python 3.9 환경(`requirements.txt`)을 쓴다.
 
----
+## 한계
 
-## 사이트 안내
+- BC카드 데이터는 시군구×업종 단위 집계라 점포별 매출이 아니다. 더 세밀한 데이터가 있다면 결과가 달라질 수 있다.
+- 관측 기간이 6개월(소비 데이터)~9개월(폐업 추적)로 짧아 계절성은 다루지 못한다.
+- 프랜차이즈 여부는 자체 구축한 브랜드 목록 기반이라 일부 누락 가능성이 있다.
+- 랜덤서바이벌포레스트는 아직 최종 모형과 동일한 변수 구성으로 재검증하지 못했다.
 
-- **지도 탐색**: 시군구 버블 지도(색 = 상대 폐업 위험 / 실제 폐업률 / 상권 유형), 업종 필터, 검색("동탄 서양음식", "한식 위험한 곳" 등 정해진 형식), 지역·업종 선택 시 요인별 영향("왜"), BC 소비 구성, **상권 유형 카드**, **내 점포 진단 계산기**(개업 연수·프랜차이즈 여부를 넣으면 상대 위험을 즉시 계산)
-- **상권 분석**: 시군구 프로필, 두 지역 비교, 위험·안전 순위, 상권 유형 표
-- **모형 근거**: 요인 중요도, 검증 결과(5-fold), **전향 검증 카드**, 시사점, 데이터와 한계
-- 화면의 설명 문장은 규칙으로 만들며 LLM을 쓰지 않는다. 숫자는 모두 분석 산출물에서 온다.
-- `demand_forecast.py`·`customer_analysis.py`(단기 소비 추이 예측, 고객 연령 구성 변화)는 아직 사이트에 반영하지 않았다 — 결과는 CHANGELOG ㉙·㉚과 `output/14_*`·`15_*`에 있다.
+## 함께한 사람들
 
----
-
-## 알려진 한계 / 남은 일
-
-- RSF(`cox_rsf.py`/`rsf_eval.py`)에 최종 모형(M3L)의 자기·이웃 폐업 이력 변수가 아직 반영되지 않았다 — 비선형 비교는 M3 기준.
-- BC 원자료의 연령(AGE_CD 1~6)·성별 코드 공식 정의가 저장소에 없어 오름차순 가정(다른 스크립트와 동일 가정)으로 쓴다.
-- 인천 서구·중구 입지(중심지 거리) 이상치 원인 미확인, 프랜차이즈 목록(수작업)의 민감도 분석 미실시.
-- 소비 추이·고객 분석(`demand_forecast.py`·`customer_analysis.py`)은 2026년 1~6월 6개월뿐이라 계절성을 다루지 못한다 — "단기 추이"로만 해석한다.
-- 전체 목록은 [CHANGELOG.md](CHANGELOG.md) 맨 아래 "아직 정리 안 된 것"과 [프로젝트 계획](BC카드_공모전_프로젝트_계획.md)의 "남은 일" 참고.
-
----
-
-## 협업 메모
-- 공용 저장소는 `ahnseo0000/BC_card`. 푸시 전에 `git pull --no-rebase origin main`으로 팀원 변경을 먼저 합친다(CHANGELOG.md를 동시에 고치면 충돌한다 — 양쪽 섹션을 모두 남기고 해결).
-- 큰 파일(CSV)은 올리지 않는다. 산출물이 필요하면 위 실행 순서로 각자 만든다.
+데이터 결합·생존분석 모델링·검증·웹사이트는 이 저장소 기준으로 진행했고, 랜덤서바이벌포레스트 비교와 일부 전처리 단계는 팀원과 함께 작업했다.
